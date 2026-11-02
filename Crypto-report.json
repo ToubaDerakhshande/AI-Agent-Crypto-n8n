@@ -1,0 +1,212 @@
+{
+  "name": "Crypto-report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9-23 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -912,
+        -48
+      ],
+      "id": "58c87ff0-71d7-4121-874c-c755648dd11e",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,tether,binancecoin,solana,ripple,cardano,dogecoin,avalanche-2,tron&vs_currencies=usd&include_24hr_change=true",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -752,
+        -48
+      ],
+      "id": "0eedf87d-5873-4b25-9d73-6da080ff03d0",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        32,
+        -48
+      ],
+      "id": "81a51374-91a1-4cce-8ff0-47758874b3f6",
+      "name": "Send a text message",
+      "webhookId": "edd426ea-17bd-4e67-b4ca-b91ee6ff7b35",
+      "credentials": {
+        "telegramApi": {
+          "id": "AQMABDeUka8wvljL",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.coinListText }}",
+        "options": {
+          "systemMessage": "=تو یک تحلیلگر حرفه‌ای و خبره بازار ارزهای دیجیتال هستی. اطلاعات زیر از قیمت ۱۰ ارز به دست آمده است:\n\n{{ $json.coinListText }}\n\nلطفاً یک تحلیل کوتاه بازار، تحلیل خلاصه برای هر ارز، و یک بخش پیش‌بینی (کدام ارز صعودی 🟢 و کدام نزولی 🔴 خواهد بود) بنویس.\n\n🚨 قوانین بسیار مهم:\n1. **زبان خروجی باید منحصراً و ۱۰۰ درصد فارسی باشد.** به هیچ وجه از کلمات یا جملات انگلیسی (به جز نماد ارزها مثل BTC و ETH) استفاده نکن.\n2. فقط از تگ‌های HTML مجاز تلگرام (مثل <b> و <i>) استفاده کن. به هیچ وجه از <p> یا تگ‌های دیگر استفاده نکن.\n3. متن بسیار خلاصه، جذاب، حرفه‌ای و مناسب برای کانال تلگرامی باشد.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -416,
+        -48
+      ],
+      "id": "119899dc-3850-4da7-8d1e-cfb9af124089",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "cohere/north-mini-code:free",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -528,
+        160
+      ],
+      "id": "0ca7d36b-cb37-4c63-beef-201e91bcecc1",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "ew5OmYOh7FXxhZ1u",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// گرفتن خروجی تحلیل از AI Agent\nconst aiAnalysis = $input.first().json.output || '';\n\n// دریافت اطلاعات قیمت‌ها از نود HTTP Request (باید به این نود متصل باشد یا از طریق itemlinking دسترسی داشته باشد)\n// فرض بر این است که داده‌های خام قیمت در جریان کار موجود است\nconst items = $('HTTP Request').first().json;\n\nconst coins = [\n  ['bitcoin',      'بیت‌کوین',      'BTC'],\n  ['ethereum',     'اتریوم',        'ETH'],\n  ['tether',       'تتر',           'USDT'],\n  ['binancecoin',  'بایننس‌کوین',   'BNB'],\n  ['solana',       'سولانا',        'SOL'],\n  ['ripple',       'ریپل',          'XRP'],\n  ['cardano',      'کاردانو',       'ADA'],\n  ['dogecoin',     'دوج‌کوین',      'DOGE'],\n  ['avalanche-2',  'آوالانچ',       'AVAX'],\n  ['tron',         'ترون',          'TRX'],\n];\n\nconst arrow = (change) => (change >= 0 ? '🟢▲' : '🔴▼');\nconst fmt = (num) => {\n  if (num >= 1) {\n    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });\n  }\n  return num.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 6 });\n};\n\nlet priceLines = '';\nfor (const [id, faName, symbol] of coins) {\n  const item = items[id];\n  if (!item) continue;\n  const price = fmt(item.usd);\n  const change = item.usd_24h_change ?? 0;\n  priceLines += `🪙 <b>${faName} (${symbol})</b>\\n💵 $${price}   ${arrow(change)} ${change.toFixed(2)}%\\n\\n`;\n}\n\n// تاریخ و ساعت به وقت تهران\nconst now = new Date().toLocaleString('fa-IR', {\n  timeZone: 'Asia/Tehran',\n  dateStyle: 'short',\n  timeStyle: 'short',\n});\n\n// ترکیب نهایی پیام\nconst message = `📊 <b>گزارش بازار رمزارزها</b>\n⏰ ${now}\n\n${priceLines}-----------------------------\n🤖 <b>تحلیل هوش مصنوعی و پیش‌بینی روز:</b>\n${aiAnalysis}\n\n`;\n\nreturn [{ json: { message } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        -48
+      ],
+      "id": "64989263-aa09-447d-acac-e8bd2da55bf5",
+      "name": "Clean Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const coins = [\n  ['bitcoin',      'بیت‌کوین',      'BTC'],\n  ['ethereum',     'اتریوم',        'ETH'],\n  ['tether',       'تتر',           'USDT'],\n  ['binancecoin',  'بایننس‌کوین',   'BNB'],\n  ['solana',       'سولانا',        'SOL'],\n  ['ripple',       'ریپل',          'XRP'],\n  ['cardano',      'کاردانو',       'ADA'],\n  ['dogecoin',     'دوج‌کوین',      'DOGE'],\n  ['avalanche-2',  'آوالانچ',       'AVAX'],\n  ['tron',         'ترون',          'TRX'],\n];\n\nconst data = $input.first().json;\n\nlet coinListText = '';\nfor (const [id, faName, symbol] of coins) {\n  const item = data[id];\n  if (!item) continue;\n  coinListText += `- ${faName} (${symbol}): قیمت = $${item.usd}, تغییرات 24 ساعته = ${item.usd_24h_change.toFixed(2)}%\\n`;\n}\n\n// این متن به عنوان ورودی داده می شود به AI Agent\nreturn [{ json: { coinListText } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        -48
+      ],
+      "id": "77488b6f-57e6-4ad2-a441-98c05c81ca55",
+      "name": "Find Coinlist"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Find Coinlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Clean Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Data": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Coinlist": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "timezone": "Asia/Tehran",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "90ba179b-b291-45fc-8494-97fff365e4ff",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3fade502b6432c160e2358e4da55bb2fc36ae3a63518bc137a36d4909f62913b"
+  },
+  "nodeGroups": [],
+  "id": "0m0MkysorAJEpSVU",
+  "tags": []
+}
